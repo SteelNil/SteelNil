@@ -1,4 +1,4 @@
-sup, im @SteelNil
+sup, im @SteelNil.
 you can just call me renato or ren tho.
 currently learning lua (more specifically luau)
 
