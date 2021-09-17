@@ -24,7 +24,9 @@ local function CloneCharacter(model: Instance)
 		clone.Parent = newModel
 	end
 
-	for _, delete in ipairs(newModel:GetDescendants()) do --deleting stuff
+	local descs = newModel:GetDescendants() --were gonna return this later so lets keep it in a variable
+
+	for _, delete in ipairs(descs) do --deleting stuff
 		for _, class in ipairs({"LuaSourceContainer", "BackpackItem", "JointInstance", "RemoteEvent", "RemoteFunction", "BindableEvent", "BindableFunction", "Sound", "Trail", "Attachment"}) do
 			if delete:IsA(class) then
 				delete:Destroy()
@@ -33,10 +35,11 @@ local function CloneCharacter(model: Instance)
 		end
 	end
 
-	return newModel, tbl, whatToUse
+	return newModel, tbl, whatToUse, descs
 end
 
 local player = game:GetService("Players").LocalPlayer
+local cam = game:GetService("Workspace").CurrentCamera
 
 local phrases = {
 	"You are dead, not big surprise.",
@@ -53,34 +56,37 @@ local phrases = {
 local char = player.Character or player.CharacterAdded:Wait()
 
 local connection; connection = char:WaitForChild("Humanoid").Died:Connect(function()
-	connection:Disconnect() --the died event for players can fire twice somehow
-	viewport.CurrentCamera = workspace.CurrentCamera
-	local charModel, tbl, whatToUse = CloneCharacter(char)
+	connection:Disconnect() --the died event for players can fire twice somehow so we do this
+	local charModel, tbl, whatToUse, descs = CloneCharacter(char)
 
 	game:GetService("RunService").RenderStepped:Connect(function()
-		pcall(function() --incase anything falls into the void
+		pcall(function() --just in case
 			for _, v in ipairs(whatToUse) do
 				v.CFrame = tbl[v.Parent:IsA("Accoutrement") and v.Parent.Name or v.Name].CFrame
 			end
 		end)
 	end)
 
-	for _, part in ipairs(char:GetDescendants()) do --make the original body invisible to the player
-		if part:IsA("BasePart") or part:IsA("Decal") then
-			part.Transparency = 1
-		end
-	end
-
 	charModel.Parent = viewport
 	viewport.Parent.TextLabel.Text = phrases[math.random(1, #phrases)]
+	viewport.CurrentCamera = cam
 	viewport.Parent.Visible = true
 
-	for i = 0.9, 0, -0.1 do --slow down sound
-		player.PlayerGui.Sound.PlaybackSpeed = i
-		task.wait(0.1)
-	end
+	task.spawn(function() --fade out
+		task.wait(3.5)
+		for _ = 1, 10 do
+			for _, part in ipairs(descs) do
+				if part:IsA("BasePart") or part:IsA("Decal") then
+					part.Transparency += 0.1
+				end
+			end
+			task.wait(0.01)
+		end
+	end)
 
-	local l = workspace.CurrentCamera:FindFirstChild("KillerLava") --the rising lava thing is local
+	game:GetService("TweenService"):Create(player.PlayerGui:FindFirstChildOfClass("Sound"), TweenInfo.new(1, Enum.EasingStyle.Sine, Enum.EasingDirection.In), {PlaybackSpeed = 0}):Play() --slow down sound
+
+	local l = cam:FindFirstChild("KillerLava") --the rising lava thing is local
 	if l then
 		l.Anchored = false
 		task.wait(3)
