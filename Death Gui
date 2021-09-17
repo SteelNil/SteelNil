@@ -1,0 +1,89 @@
+local viewport = script.Parent.Frame.ViewportFrame
+
+local function CloneCharacter(model: Instance)
+	local newModel = Instance.new("Model")
+	newModel.Name = model.Name
+	local tbl, whatToUse = {}, {}
+
+	local function SetUncollideableAndPutInTable(part: BasePart)
+		part.Anchored, part.CanCollide, part.CanTouch, part.CanQuery = true, false, false, false
+		table.insert(whatToUse, part)
+	end
+
+	for _, v in ipairs(model:GetChildren()) do
+		local clone = v:Clone()
+
+		if v:IsA("BasePart") then
+			tbl[v.Name] = v
+			SetUncollideableAndPutInTable(clone)
+		elseif v:IsA("Accoutrement") then
+			tbl[v.Name] = v.Handle
+			SetUncollideableAndPutInTable(clone.Handle)
+		end
+
+		clone.Parent = newModel
+	end
+
+	for _, delete in ipairs(newModel:GetDescendants()) do --deleting stuff
+		for _, class in ipairs({"LuaSourceContainer", "BackpackItem", "JointInstance", "RemoteEvent", "RemoteFunction", "BindableEvent", "BindableFunction", "Sound", "Trail", "Attachment"}) do
+			if delete:IsA(class) then
+				delete:Destroy()
+				break
+			end
+		end
+	end
+
+	return newModel, tbl, whatToUse
+end
+
+local player = game:GetService("Players").LocalPlayer
+
+local phrases = {
+	"You are dead, not big surprise.",
+	"R.I.P "..player.Name..". Probably died because of a stupid reason.",
+	"Did you know that these death screens are chosen completely randomly?",
+	"I can't believe you died like that...",
+	"You died. Boo hoo.",
+	"Goodbye!",
+	"Noob.",
+	"That looks like it hurt. Good.",
+	player.Name.."?? "..player.Name.."???!!?? "..player.Name.."!!!!!"
+}
+
+local char = player.Character or player.CharacterAdded:Wait()
+
+local connection; connection = char:WaitForChild("Humanoid").Died:Connect(function()
+	connection:Disconnect() --the died event for players can fire twice somehow
+	viewport.CurrentCamera = workspace.CurrentCamera
+	local charModel, tbl, whatToUse = CloneCharacter(char)
+
+	game:GetService("RunService").RenderStepped:Connect(function()
+		pcall(function() --incase anything falls into the void
+			for _, v in ipairs(whatToUse) do
+				v.CFrame = tbl[v.Parent:IsA("Accoutrement") and v.Parent.Name or v.Name].CFrame
+			end
+		end)
+	end)
+
+	for _, part in ipairs(char:GetDescendants()) do --make the original body invisible to the player
+		if part:IsA("BasePart") or part:IsA("Decal") then
+			part.Transparency = 1
+		end
+	end
+
+	charModel.Parent = viewport
+	viewport.Parent.TextLabel.Text = phrases[math.random(1, #phrases)]
+	viewport.Parent.Visible = true
+
+	for i = 0.9, 0, -0.1 do --slow down sound
+		player.PlayerGui.Sound.PlaybackSpeed = i
+		task.wait(0.1)
+	end
+
+	local l = workspace.CurrentCamera:FindFirstChild("KillerLava") --the rising lava thing is local
+	if l then
+		l.Anchored = false
+		task.wait(3)
+		l:Destroy()
+	end
+end)
