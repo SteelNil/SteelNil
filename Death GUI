@@ -1,5 +1,11 @@
 local viewport = script.Parent.Frame.ViewportFrame
 
+local function Tween(...)
+	local tween = game:GetService("TweenService"):Create(...)
+	tween:Play()
+	return tween
+end
+
 local function CloneCharacter(model: Instance)
 	local newModel = Instance.new("Model")
 	newModel.Name = model.Name
@@ -59,7 +65,7 @@ local connection; connection = char:WaitForChild("Humanoid").Died:Connect(functi
 	connection:Disconnect() --the died event for players can fire twice somehow so we do this
 	local charModel, tbl, whatToUse, descs = CloneCharacter(char)
 
-	game:GetService("RunService").RenderStepped:Connect(function()
+	local charRender; charRender = game:GetService("RunService").RenderStepped:Connect(function()
 		pcall(function() --just in case
 			for _, v in ipairs(whatToUse) do
 				v.CFrame = tbl[v.Parent:IsA("Accoutrement") and v.Parent.Name or v.Name].CFrame
@@ -74,17 +80,13 @@ local connection; connection = char:WaitForChild("Humanoid").Died:Connect(functi
 
 	task.spawn(function() --fade out
 		task.wait(3.5)
-		for _ = 1, 10 do
-			for _, part in ipairs(descs) do
-				if part:IsA("BasePart") or part:IsA("Decal") then
-					part.Transparency += 0.1
-				end
-			end
-			task.wait(0.01)
-		end
+		local tween = Tween(viewport, TweenInfo.new(0.25, Enum.EasingStyle.Sine, Enum.EasingDirection.In), {ImageTransparency = 1}) --fade out
+		tween.Completed:Wait()
+		charRender:Disconnect()
+		viewport:Destroy(); viewport = nil
 	end)
 
-	game:GetService("TweenService"):Create(player.PlayerGui:FindFirstChildOfClass("Sound"), TweenInfo.new(1, Enum.EasingStyle.Sine, Enum.EasingDirection.In), {PlaybackSpeed = 0}):Play() --slow down sound
+	Tween(player.PlayerGui:FindFirstChildOfClass("Sound"), TweenInfo.new(1, Enum.EasingStyle.Sine, Enum.EasingDirection.In), {PlaybackSpeed = 0}) --slow down sound
 
 	local l = cam:FindFirstChild("KillerLava") --the rising lava thing is local
 	if l then
