@@ -18,7 +18,7 @@ local function CloneCharacter(model: Instance)
 
 	for _, v in ipairs(model:GetChildren()) do
 		local clone = v:Clone()
-
+		
 		if v:IsA("BasePart") then
 			tbl[v.Name] = v
 			SetUncollideableAndPutInTable(clone)
@@ -30,9 +30,7 @@ local function CloneCharacter(model: Instance)
 		clone.Parent = newModel
 	end
 
-	local descs = newModel:GetDescendants() --were gonna return this later so lets keep it in a variable
-
-	for _, delete in ipairs(descs) do --deleting stuff
+	for _, delete in ipairs(newModel:GetDescendants()) do --deleting stuff
 		for _, class in ipairs({"LuaSourceContainer", "BackpackItem", "JointInstance", "RemoteEvent", "RemoteFunction", "BindableEvent", "BindableFunction", "Sound", "Trail", "Attachment"}) do
 			if delete:IsA(class) then
 				delete:Destroy()
@@ -41,7 +39,7 @@ local function CloneCharacter(model: Instance)
 		end
 	end
 
-	return newModel, tbl, whatToUse, descs
+	return newModel, tbl, whatToUse
 end
 
 local player = game:GetService("Players").LocalPlayer
@@ -63,7 +61,7 @@ local char = player.Character or player.CharacterAdded:Wait()
 
 local connection; connection = char:WaitForChild("Humanoid").Died:Connect(function()
 	connection:Disconnect() --the died event for players can fire twice somehow so we do this
-	local charModel, tbl, whatToUse, descs = CloneCharacter(char)
+	local charModel, tbl, whatToUse = CloneCharacter(char)
 
 	local charRender; charRender = game:GetService("RunService").RenderStepped:Connect(function()
 		pcall(function() --just in case
