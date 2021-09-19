@@ -76,8 +76,7 @@ local connection; connection = char:WaitForChild("Humanoid").Died:Connect(functi
 	viewport.CurrentCamera = cam
 	viewport.Parent.Visible = true
 
-	task.spawn(function() --fade out
-		task.wait(3.5)
+	task.delay(3.5, function() --fade out
 		local tween = Tween(viewport, TweenInfo.new(0.25, Enum.EasingStyle.Sine, Enum.EasingDirection.In), {ImageTransparency = 1})
 		tween.Completed:Wait()
 		charRender:Disconnect()
