@@ -1,7 +1,7 @@
 local viewport = script.Parent.Frame.ViewportFrame
 
-local function Tween(...)
-	local tween = game:GetService("TweenService"):Create(...)
+local function Tween(instance: Instance, tweenInfo: TweenInfo, properties: any)
+	local tween = game:GetService("TweenService"):Create(instance, tweenInfo, properties)
 	tween:Play()
 	return tween
 end
@@ -18,7 +18,7 @@ local function CloneCharacter(model: Instance)
 
 	for _, v in ipairs(model:GetChildren()) do
 		local clone = v:Clone()
-		
+
 		if v:IsA("BasePart") then
 			tbl[v.Name] = v
 			SetUncollideableAndPutInTable(clone)
