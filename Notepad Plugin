@@ -1,0 +1,80 @@
+local saveFileName = "NotepadPluginData"
+
+local resources = script.Parent:WaitForChild("Resources")
+local rbxGui = require(resources:WaitForChild("BetterRbxGui"))
+
+local dockInfo = DockWidgetPluginGuiInfo.new(
+	Enum.InitialDockState.Float,
+	false,
+	false,
+	320,
+	320,
+	320,
+	320
+)
+
+local function DoUDim2Math(originalSize: UDim2, textContainer: TextBox | TextLabel)
+	return UDim2.new(originalSize.X.Scale, originalSize.X.Offset, originalSize.Y.Scale + (#textContainer.Text / 450), originalSize.Y.Offset)
+end
+
+local state = false -- Will be used for turning the plugin on/off
+local widget = plugin:CreateDockWidgetPluginGui("NotepadPluginDockWidget", dockInfo)
+widget.Name = "Notepad"
+widget.Title = "Notepad"
+
+local main = resources:WaitForChild("Main")
+local frame = main:WaitForChild("Frame")
+
+local scroll = rbxGui.CreateTrueScrollingFrame()
+scroll.BorderColor3 = Color3.new(0, 0, 0)
+scroll.BorderSizePixel = 5
+scroll.Size = frame.Size
+scroll.Position = frame.Position
+scroll.Parent = main
+
+for _, child in ipairs(frame:GetChildren()) do
+	child.Parent = scroll
+end
+frame:Destroy()
+frame, scroll = scroll, nil
+
+local text = frame.Background:WaitForChild("Text")
+text.Text = plugin:GetSetting(saveFileName) or "" -- Loading
+local originalTextSize = text.Size -- We'll use this for resizing the textbox
+
+text.Size = DoUDim2Math(originalTextSize, text)
+
+local toolbar = plugin:CreateToolbar("Notepad")
+local button = toolbar:CreateButton("Notepad", "Open/Close Notepad", "rbxassetid://7697032560")
+button.ClickableWhenViewportHidden = true
+
+local function UpdatePluginStuff(wantedState: boolean)
+	state = wantedState
+	widget.Enabled = state
+	button:SetActive(state)
+end
+
+widget:BindToClose(function() UpdatePluginStuff(false) end)
+button.Click:Connect(function() UpdatePluginStuff(not state) end)
+
+text:GetPropertyChangedSignal("Text"):Connect(function()
+	text:TweenSize(DoUDim2Math(originalTextSize, text), "In", "Linear", 0.05) -- Resizing
+	plugin:SetSetting(saveFileName, text.Text) -- Saving
+end)
+
+local sets = settings().Studio
+
+local function UpdateGuiColors()
+	if sets.Theme.Name == "Dark" then
+		main.BackgroundColor3 = Color3.new(0.113725, 0.113725, 0.113725)
+		frame.BackgroundColor3 = Color3.new(0.192157, 0.192157, 0.192157)
+	else
+		main.BackgroundColor3 = Color3.new(0.886275, 0.980392, 1)
+		frame.BackgroundColor3 = Color3.new(0.839216, 0.929412, 0.945098)
+	end
+end
+
+sets.ThemeChanged:Connect(UpdateGuiColors)
+UpdateGuiColors() -- Updating gui colors for the first time
+
+main.Parent = widget
