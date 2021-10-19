@@ -1,0 +1,631 @@
+--[[
+This code is terrible. Oh my god.
+I'm not gonna rewrite all of this but like... Man.
+--]]
+
+if not game:GetService("RunService"):IsRunning() then
+	print("Loading Steel's Cutscene Creator...")
+
+	local ver = script.Parent.Version.Value
+	pcall(function() -- Incase the person using the plugin is offline.
+		local latestVersion = game:GetObjects("rbxassetid://7642495039")[1].Version.Value
+
+		if ver < latestVersion then
+			warn("You are using an outdated version of Steel's Cutscene Creator.\n(You're using version "..ver..", but the latest version is "..latestVersion..".)\nPlease update the plugin for a better user experience.")
+		end
+	end)
+
+	local cam = workspace.CurrentCamera
+
+	workspace.ChildRemoved:Connect(function(oldCam)
+		if oldCam == cam then
+			repeat task.wait() until (cam ~= workspace.CurrentCamera and workspace.CurrentCamera)
+			cam = workspace.CurrentCamera
+		end
+	end)
+
+	local http = game:GetService("HttpService")
+	local ts = game:GetService("TweenService")
+	local selection = game:GetService("Selection")
+	local coreGui = game:GetService("CoreGui")
+
+	if coreGui:FindFirstChild("CutscenePluginGui") then
+		coreGui.CutscenePluginGui:Destroy()
+	end
+
+	local function CheckExistence(parent: Instance, thing: any)
+		local existing = parent:FindFirstChild(thing.Name)
+
+		if existing then
+			existing:Destroy()
+			existing = nil
+		end
+
+		thing.Parent = parent
+		if thing:IsA("LuaSourceContainer") then
+			thing.Disabled = false
+		end
+	end
+
+	local function UpdateScripts()
+		local remote = Instance.new("RemoteEvent")
+		remote.Name = "SteelCutsceneHandler"
+
+		CheckExistence(game:GetService("ReplicatedStorage"), remote)
+		CheckExistence(game:GetService("ServerScriptService"), script:WaitForChild("SteelCutsceneServerHandler"):Clone())
+		CheckExistence(game:GetService("StarterPlayer"):FindFirstChildOfClass("StarterPlayerScripts"), script:WaitForChild("SteelCutsceneClientHandler"):Clone())
+	end
+
+	local toolBar = plugin:CreateToolbar("Cutscene Creator")
+	local button = toolBar:CreateButton("Steel's Cutscene Creator", "Open/Close Steel's Cutscene Creator", "rbxassetid://7643324915")
+	local gui = script:WaitForChild("CutscenePluginGui")
+	local main = gui.Main
+	local editBar = main.EditBar
+
+	local connections, startConnections, frameConnections, tweenStyleConnections = {}, {}, {}, {}
+
+	main.Position = UDim2.new(0, 0, -1, 0)
+	main.CurrentVersion.Text = "Version "..ver
+
+	local guiPoses = { -- We'll use this for tweening the gui on and off (and parenting)
+		[true] = {UDim2.new(0, 0, 0, 0), coreGui}, -- Gui appearing
+		[false] = {UDim2.new(0, 0, -1, 0), nil} -- Gui disappearing
+	}
+
+	local oldState = plugin:IsActivated()
+	local tween -- This variable will act both as a cooldown and tween storer
+
+	local function DoTween(instance: Instance, tweenInfo: TweenInfo, propertyTable: any)
+		tween = ts:Create(instance, tweenInfo, propertyTable)
+		tween:Play()
+		tween.Completed:Wait()
+		button:SetActive(oldState)
+		tween = nil
+	end
+
+	local function MakeRod(part0: BasePart, part1: BasePart)
+		local attachment0 = Instance.new("Attachment")
+		attachment0.Name = "Attachment0"
+		local attachment1 = Instance.new("Attachment")
+		attachment1.Name = "Attachment1"
+
+		local rod = Instance.new("RodConstraint")
+		rod.Attachment0 = attachment0
+		rod.Attachment1 = attachment1
+
+		attachment0.Parent = part0
+		attachment1.Parent = part1
+
+		rod.Color = BrickColor.new("Lapis")
+		rod.Visible = true
+		rod.Parent = part1
+		return rod
+	end
+
+	local function DisconnectAll(tbl: any)
+		for i = #tbl, 1, -1 do
+			if typeof(tbl[i]) == "RBXScriptConnection" then tbl[i]:Disconnect() end
+			table.remove(tbl, i)
+		end
+	end
+
+	plugin.Deactivation:Connect(function()
+		oldState = false
+		DoTween(main, TweenInfo.new(0.35, Enum.EasingStyle.Linear, Enum.EasingDirection.Out), {Position = guiPoses[false][1]})
+
+		DisconnectAll(tweenStyleConnections)
+		DisconnectAll(frameConnections)
+		DisconnectAll(connections)
+		DisconnectAll(startConnections)
+
+		gui.Parent = nil
+		main.BrickPos.Position = UDim2.new(0.067, 0, -1.5, 0)
+		editBar.Visible = false
+		main.Bar.BackToMenu.Visible = false
+	end)
+
+	local function GetFrames(cutscene: Model)
+		local frames, sorted = {}, {}
+
+		for _, child in ipairs(cutscene:GetChildren()) do
+			if tonumber(child.Name) then
+				table.insert(frames, child)
+			end
+		end
+
+		local currentFrame = 0
+
+		for _, _ in ipairs(frames) do
+			for _, frame in ipairs(frames) do
+				if tonumber(frame.Name) == currentFrame + 1 then
+					table.insert(sorted, frame)
+					currentFrame += 1
+					break
+				end
+			end
+		end
+
+		return sorted
+	end
+
+	local function TieToCutsceneModel(model: any)
+		UpdateScripts()
+
+		editBar.TweenStyles.Visible = false
+		editBar.Visible = true
+		main.Bar.BackToMenu.Visible = true
+		local length = model.FrameData
+		local singularity = model["1PlayerExclusive"]
+		local tweenStyle = model.TweenStyle
+		local skippable = model.Skippable
+		local walkable = model.Walkable
+		local brick = model.Start
+
+		local decryptedLength = http:JSONDecode(length.Value)
+
+		local function RemakeLength(frame: BasePart)
+			local frameLengthRaw = {}
+
+			for _, otherFrames in ipairs(GetFrames(model)) do
+				frameLengthRaw[otherFrames.Name] = decryptedLength[otherFrames.Name]
+			end
+
+			frameLengthRaw[frame.Name] = {}
+			frameLengthRaw[frame.Name][1] = tonumber(editBar.FrameLength.Text) or 1
+			frameLengthRaw[frame.Name][2] = tonumber(editBar.FOV.Text) or cam.FieldOfView
+			decryptedLength = frameLengthRaw
+			length.Value = http:JSONEncode(decryptedLength)
+		end
+
+		local function TieToFrameBrick(frame: BasePart | nil)
+			editBar.RepositionFrameDone.Visible = false
+			DisconnectAll(frameConnections)
+
+			if model.PrimaryPart then -- Adjusting the model's world pivot
+				model.PrimaryPart.PivotOffset = model.PrimaryPart.CFrame:ToObjectSpace(({model:GetBoundingBox()})[1])
+			else
+				model.WorldPivot = ({model:GetBoundingBox()})[1]
+			end
+
+			if frame then
+				decryptedLength[frame.Name] = decryptedLength[frame.Name] or {}
+				editBar.FOV.Text = decryptedLength[frame.Name][2] or cam.FieldOfView
+				editBar.FrameLength.Text = decryptedLength[frame.Name][1] or 1
+				length.Value = http:JSONEncode(decryptedLength)
+
+				editBar.FrameSelect.Text = frame.Name
+
+				selection:Set({frame})
+				editBar.FrameRotation.Text = frame.Orientation.Z
+
+				table.insert(frameConnections, editBar.RepositionFrame.MouseButton1Click:Connect(function()
+					editBar.RepositionFrameDone.Visible = true
+					frame.CFrame = cam.CFrame
+
+					local camMoveConec = cam:GetPropertyChangedSignal("CFrame"):Connect(function()
+						frame.CFrame = cam.CFrame
+					end)
+
+					local turnOffRepos = editBar.RepositionFrameDone.MouseButton1Click:Connect(function()
+						camMoveConec:Disconnect()
+						editBar.RepositionFrameDone.Visible = false
+					end)
+
+					table.insert(connections, turnOffRepos)
+					table.insert(connections, camMoveConec)
+					table.insert(frameConnections, turnOffRepos)
+					table.insert(frameConnections, camMoveConec)
+				end))
+
+				table.insert(frameConnections, editBar.FrameLength:GetPropertyChangedSignal("Text"):Connect(function()
+					RemakeLength(frame)
+				end))
+
+				table.insert(frameConnections, editBar.FrameRotation:GetPropertyChangedSignal("Text"):Connect(function()
+					frame.Orientation = Vector3.new(frame.Orientation.X, frame.Orientation.Y, tonumber(editBar.FrameRotation.Text))
+				end))
+
+				table.insert(frameConnections, editBar.DeleteFrame.MouseButton1Click:Connect(function()
+					local frames = GetFrames(model)
+					local index = tonumber(frame.Name)
+					if #frames <= 0 then return end
+
+					editBar.CreateFrame.Text = "Create Frame #"..#frames.." Here"
+
+					if #frames == 1 then
+						brick.Attachment0:Destroy()
+						frames[1]:Destroy()
+						decryptedLength = {}
+						length.Value = http:JSONEncode(decryptedLength)
+						TieToFrameBrick()
+						return
+					end
+
+					if index == #frames then
+						frames[index - 1].Attachment0:Destroy()
+						frames[index]:Destroy()
+
+						frames = GetFrames(model) -- Re-setting the variable to the new table
+						decryptedLength[frame.Name] = nil
+						length.Value = http:JSONEncode(decryptedLength)
+						TieToFrameBrick(frames[#frames])
+						return
+					end
+
+					frames[index + 1].RodConstraint.Attachment0 = frames[index - 1].Attachment0
+					decryptedLength[frame.Name] = nil
+					frames[index]:Destroy()
+
+					for i = index + 1, #frames do
+						local iFrame = frames[i]
+						local data = decryptedLength[iFrame.Name]
+						decryptedLength[iFrame.Name] = nil
+
+						iFrame.Name -= 1
+						iFrame.BillboardGui.TextLabel.Text = iFrame.Name
+						decryptedLength[iFrame.Name] = data
+					end
+
+					length.Value = http:JSONEncode(decryptedLength)
+					TieToFrameBrick(frames[index - 1])
+				end))
+
+				table.insert(frameConnections, editBar.FOV:GetPropertyChangedSignal("Text"):Connect(function()
+					decryptedLength[frame.Name][2] = tonumber(editBar.FOV.Text) or decryptedLength[frame.Name][2]
+					length.Value = http:JSONEncode(decryptedLength)
+				end))
+
+				for _, frameConnection in ipairs(frameConnections) do
+					table.insert(connections, frameConnections)
+				end
+			end
+		end
+
+		local frames = GetFrames(model)
+
+		if #frames > 0 then
+			TieToFrameBrick(frames[#frames])
+		end
+
+		editBar.CreateFrame.Text = "Create Frame #"..(#frames + 1).." Here"
+		editBar.Singularity.Text = singularity.Value and "" or "X"
+		editBar.Skippable.Text = skippable.Value and "X" or ""
+		editBar.CurrentTweenStyle.Text = "Current Tween Style: "..tweenStyle.Value
+		editBar.Walkable.Text = walkable.Value and "X" or ""
+		frames = nil
+
+		table.insert(connections, main.Bar.BackToMenu.MouseButton1Click:Connect(function()
+			main.Bar.BackToMenu.Visible = false
+			DisconnectAll(tweenStyleConnections)
+			DisconnectAll(frameConnections)
+			DisconnectAll(connections)
+			editBar.Visible = false
+		end))
+
+		table.insert(connections, editBar.SelectFrameConfirm.MouseButton1Click:Connect(function()
+			local foundFrame = model:FindFirstChild(editBar.FrameSelect.Text)
+
+			if foundFrame and tonumber(foundFrame.Name) then
+				TieToFrameBrick(foundFrame)
+			end
+		end))
+
+		table.insert(connections, editBar.PreviewCutscene.MouseButton1Click:Connect(function()
+			local frames = GetFrames(model)
+			if #frames < 0 then return end
+
+			local originalCFrame = cam.CFrame
+			local originalType = cam.CameraType
+			local originalFOV = cam.FieldOfView
+			local originalFocus = cam.Focus
+			local tween, skip
+
+			cam.CameraType = Enum.CameraType.Scriptable
+			gui.CutscenePreview.Visible = true
+
+			local connection; connection = gui.CutscenePreview.Skip.MouseButton1Click:Connect(function()
+				connection:Disconnect()
+				skip = true
+				if tween then
+					tween:Cancel()
+				end
+			end)
+
+			table.insert(connections, connection)
+			main.Visible = false
+
+			for _, frame in ipairs(frames) do
+				frame.RodConstraint.Visible = false
+				frame.BillboardGui.Enabled = false
+				frame.Transparency = 1
+			end
+			
+			selection:Set({})
+
+			if tweenStyle.Value ~= "Hard Cut" then
+				for _, frame in ipairs(frames) do
+					if not skip then
+						tween = ts:Create(cam, TweenInfo.new(decryptedLength[frame.Name][1] or 1, Enum.EasingStyle[tweenStyle.Value], Enum.EasingDirection.Out), {CFrame = frame.CFrame, FieldOfView = decryptedLength[frame.Name][2] or originalFOV})
+						tween:Play()
+						tween.Completed:Wait()
+					else
+						break
+					end
+				end
+			else
+				local function SkippableWait(timeToWait: number)
+					local hb = game:GetService("RunService").Heartbeat
+					local deltaTime = 0
+
+					while deltaTime < timeToWait do
+						if skip then break end
+						deltaTime += hb:Wait()
+					end
+
+					return deltaTime
+				end
+
+				local function FullFlash()
+					if skip then return end
+					local bool = Instance.new("BoolValue")
+
+					local function Flash(mode: string)
+						local tween = ts:Create(gui.CutscenePreview.Flash, TweenInfo.new(0.35, Enum.EasingStyle.Linear, mode == "In" and Enum.EasingDirection.In or Enum.EasingDirection.Out), {BackgroundTransparency = mode == "In" and 0 or 1})
+						tween:Play()
+
+						local connection; connection = tween.Completed:Connect(function(e)
+							connection:Disconnect()
+							bool.Value = not bool.Value
+						end)
+						table.insert(connections, connection)
+						return tween
+					end
+
+					tween = Flash("In")
+					bool.Changed:Wait()
+					tween = Flash("Out")
+				end
+
+				for _, frame in ipairs(frames) do
+					if not skip then
+						FullFlash()
+
+						cam.CFrame = frame.CFrame
+						cam.FieldOfView = decryptedLength[frame.Name][2] or originalFOV
+						SkippableWait(decryptedLength[frame.Name][1] or 1)
+
+						FullFlash()
+					else
+						break
+					end
+				end
+
+				gui.CutscenePreview.Flash.BackgroundTransparency = 1
+			end
+
+			gui.CutscenePreview.Visible = false
+			main.Visible = true
+
+			for _, frame in ipairs(frames) do
+				frame.RodConstraint.Visible = true
+				frame.BillboardGui.Enabled = true
+				frame.Transparency = 0
+			end
+
+			cam.CFrame = originalCFrame
+			cam.FieldOfView = originalFOV
+			cam.Focus = originalFocus
+
+			cam.CameraType = originalType
+		end))
+
+		table.insert(connections, model:GetPropertyChangedSignal("Parent"):Connect(function()
+			if not model.Parent then
+				plugin:Deactivate()
+			end
+		end))
+
+		table.insert(connections, tweenStyle.Changed:Connect(function(newString)
+			editBar.CurrentTweenStyle.Text = "Current Tween Style: "..newString
+		end))
+
+		table.insert(connections, editBar.CreateFrame.MouseButton1Click:Connect(function()
+			local flash = ts:Create(editBar.Flash, TweenInfo.new(0.1, Enum.EasingStyle.Linear, Enum.EasingDirection.Out), {BackgroundTransparency = 0})
+			flash:Play()
+			flash.Completed:Wait()
+
+			local newFrame = Instance.new("Part")
+			newFrame.Material = Enum.Material.SmoothPlastic
+			newFrame.BrickColor = BrickColor.new("Tr. Blue")
+			newFrame.Reflectance = 0.35
+			newFrame.CanCollide = false
+			newFrame.Anchored = true
+			newFrame.CFrame = cam.CFrame
+
+			local billboard = Instance.new("BillboardGui")
+			billboard.Size = UDim2.new(1, 0, 1, 0)
+			local num = Instance.new("TextLabel")
+			num.Size = UDim2.new(2, 0, 2, 0)
+			num.Position = UDim2.new(-0.45, 0, -1.999, 0)
+			num.BackgroundTransparency = 1
+			num.TextColor3 = Color3.new(1, 1, 1)
+			num.TextStrokeColor3 = Color3.new(0, 0, 0)
+			num.TextStrokeTransparency = 0
+			num.TextScaled = true
+			num.Font = Enum.Font.Highway
+
+			local frames = GetFrames(model)
+			local lastFrame = frames[#frames]
+			local newFrameAmount = #frames + 1
+
+			num.Text = newFrameAmount
+			num.Parent = billboard
+			billboard.Parent = newFrame
+
+			newFrame.Name = newFrameAmount
+			if newFrameAmount > 1 then
+				MakeRod(lastFrame, newFrame)
+			else
+				MakeRod(brick, newFrame)
+			end
+			RemakeLength(newFrame)
+			TieToFrameBrick(newFrame)
+			newFrame.Parent = model
+
+			editBar.CreateFrame.Text = "Create Frame #"..(newFrameAmount + 1).." Here"
+			ts:Create(editBar.Flash, TweenInfo.new(0.1, Enum.EasingStyle.Linear, Enum.EasingDirection.In), {BackgroundTransparency = 1}):Play()
+		end))
+
+		table.insert(connections, editBar.Walkable.MouseButton1Click:Connect(function()
+			walkable.Value = not walkable.Value
+			editBar.Walkable.Text = walkable.Value and "X" or ""
+		end))
+
+		table.insert(connections, editBar.Skippable.MouseButton1Click:Connect(function()
+			skippable.Value = not skippable.Value
+			editBar.Skippable.Text = skippable.Value and "X" or ""
+		end))
+
+		table.insert(connections, editBar.SelectTweenStyle.MouseButton1Click:Connect(function()
+			editBar.TweenStyles.Visible = not editBar.TweenStyles.Visible
+
+			if editBar.TweenStyles.Visible then
+				for _, button in ipairs(editBar.TweenStyles:GetChildren()) do
+					table.insert(tweenStyleConnections, button.MouseButton1Click:Connect(function()
+						DisconnectAll(tweenStyleConnections)
+
+						tweenStyle.Value = button.Text
+						editBar.TweenStyles.Visible = false
+					end))
+				end
+			else
+				DisconnectAll(tweenStyleConnections)
+			end
+		end))
+
+		table.insert(connections, editBar.Singularity.MouseButton1Click:Connect(function()
+			singularity.Value = not singularity.Value
+			editBar.Singularity.Text = singularity.Value and "" or "X"
+		end))
+	end
+
+
+	button.Click:Connect(function()
+		if tween then return end
+
+		oldState = not oldState
+		local index = guiPoses[oldState]
+
+		if index[2] then -- Checking if the gui should be turned off or not. nil = turn off; CoreGui = turn on
+			gui.Parent = index[2]
+			DoTween(main, TweenInfo.new(0.35, Enum.EasingStyle.Linear, index[2] and Enum.EasingDirection.Out or Enum.EasingDirection.In), {Position = index[1]})
+			plugin:Activate(true) -- Sorry, other plugins
+
+			table.insert(startConnections, main.Bar.Close.MouseButton1Click:Connect(function()
+				plugin:Deactivate()
+			end))
+
+			table.insert(startConnections, main.Bar.Create.MouseButton1Click:Connect(function()
+				if main.BrickPos.Position ~= UDim2.new(0.067, 0, -1.5, 0) then return end
+				main.BrickPos.ChoosePos.Text = "Click at where you want the Cutscene to start..."
+
+				main.BrickPos:TweenPosition(UDim2.new(0.067, 0, 0.366, 0), "In", "Sine", 0.5, true)
+				local mouse = plugin:GetMouse()
+				mouse.Button1Down:Wait() -- Waiting for mouse click
+
+				local model = Instance.new("Model")
+				model.Name = "Cutscene"
+
+				local version = Instance.new("NumberValue")
+				version.Name = "PluginVersion"
+				version.Value = ver
+				version.Parent = model
+
+				local length = Instance.new("StringValue")
+				length.Name = "FrameData"
+				length.Value = "[]"
+				length.Parent = model
+
+				local singularity = Instance.new("BoolValue")
+				singularity.Name = "1PlayerExclusive"
+				singularity.Value = true
+				singularity.Parent = model
+
+				local skippable = Instance.new("BoolValue")
+				skippable.Name = "Skippable"
+				skippable.Value = false
+				skippable.Parent = model
+
+				local walkable = Instance.new("BoolValue")
+				walkable.Name = "Walkable"
+				walkable.Value = false
+				walkable.Parent = model
+
+				local tweenStyle = Instance.new("StringValue")
+				tweenStyle.Name = "TweenStyle"
+				tweenStyle.Value = "Linear"
+				tweenStyle.Parent = model
+
+				local brick = Instance.new("Part")
+				brick.Name = "Start"
+				brick.Anchored = true
+				brick.Size = Vector3.new(12, 1, 12) -- Regular spawn size
+				brick.Parent = model
+
+				model.Parent = workspace
+				model:MoveTo(mouse.Hit.Position)
+
+				main.BrickPos:TweenPosition(UDim2.new(0.067, 0, -1.5, 0), "Out", "Sine", 0.5, true)
+
+				TieToCutsceneModel(model)
+			end))
+
+			table.insert(startConnections, main.Bar.Edit.MouseButton1Click:Connect(function()
+				if main.BrickPos.Position ~= UDim2.new(0.067, 0, -1.5, 0) then return end
+				main.BrickPos.ChoosePos.Text = "Select the Cutscene you want to edit..."
+
+				main.BrickPos:TweenPosition(UDim2.new(0.067, 0, 0.366, 0), "In", "Sine", 0.5, true)
+
+				repeat task.wait() until #selection:Get() == 1 and selection:Get()[1]:IsA("Model") and selection:Get()[1]:FindFirstChild("FrameData")
+				main.BrickPos:TweenPosition(UDim2.new(0.067, 0, -1.5, 0), "Out", "Sine", 0.5, true)
+
+				TieToCutsceneModel(selection:Get()[1])
+			end))
+
+		else -- Plugin should be turned off
+			plugin:Deactivate()
+		end
+	end)
+
+	local function UpdateOldModels(model: any)
+		if model:IsA("Model") then
+			local frameData = model:FindFirstChild("FrameData") or model:FindFirstChild("FrameLengthData")
+			if frameData then
+				UpdateScripts()
+				coroutine.wrap(function()
+					if model.PluginVersion.Value < 1.3 then -- Updating FOV for versions before 1.3, aka, when camera FOV could only be set for the whole cutscene.
+						local data = http:JSONDecode(frameData.Value)
+						local fov = model.FOV
+
+						for i, time in pairs(data) do
+							data[i] = {time, fov.Value}
+						end
+
+						frameData.Value = http:JSONEncode(data)
+						frameData.Name = "FrameData"
+						fov:Destroy()
+						model.PluginVersion.Value = ver
+					end
+				end)()
+			end
+		end
+	end
+
+	for _, model in ipairs(workspace:GetDescendants()) do
+		UpdateOldModels(model)
+	end
+	workspace.DescendantAdded:Connect(UpdateOldModels)
+
+	print("Steel's Cutscene Creator has loaded!")
+end
+--20:30, 16/10/21 (DD, MM, YY), @renato02042010
