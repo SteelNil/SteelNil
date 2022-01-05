@@ -1,20 +1,12 @@
 --[[
 This code is terrible. Oh my god.
-I'm not gonna rewrite all of this but like... Man.
+I'm not gonna rewrite all of this but like... man.
 --]]
 
 if not game:GetService("RunService"):IsRunning() then
 	print("Loading Steel's Cutscene Creator...")
 
 	local ver = script.Parent.Version.Value
-	pcall(function() -- Incase the person using the plugin is offline.
-		local latestVersion = game:GetObjects("rbxassetid://7642495039")[1].Version.Value
-
-		if ver < latestVersion then
-			warn("You are using an outdated version of Steel's Cutscene Creator.\n(You're using version "..ver..", but the latest version is "..latestVersion..".)\nPlease update the plugin for a better user experience.")
-		end
-	end)
-
 	local cam = workspace.CurrentCamera
 
 	workspace.ChildRemoved:Connect(function(oldCam)
@@ -48,19 +40,30 @@ if not game:GetService("RunService"):IsRunning() then
 	end
 
 	local function UpdateScripts()
-		local remote = Instance.new("RemoteEvent")
-		remote.Name = "SteelCutsceneHandler"
-
-		CheckExistence(game:GetService("ReplicatedStorage"), remote)
+		CheckExistence(game:GetService("ReplicatedStorage"), script:WaitForChild("SteelCutsceneHandler"):Clone())
 		CheckExistence(game:GetService("ServerScriptService"), script:WaitForChild("SteelCutsceneServerHandler"):Clone())
 		CheckExistence(game:GetService("StarterPlayer"):FindFirstChildOfClass("StarterPlayerScripts"), script:WaitForChild("SteelCutsceneClientHandler"):Clone())
 	end
 
+	local gui = script:WaitForChild("CutscenePluginGui")
+	local main = gui:WaitForChild("Main")
+	local editBar = main:WaitForChild("EditBar")
+
+	coroutine.wrap(function()
+		local latestVersion = game:GetObjects("rbxassetid://7642495039")[1].Version.Value
+
+		if ver < latestVersion then
+			local update = gui:WaitForChild("Update")
+			update.Text.Text = "You are using an outdated version of Steel's Cutscene Creator.\n(You're using version "..ver..", but the latest version is "..latestVersion..".)\nPlease update the plugin for a better user experience."
+			update.Visible = true
+			update.Close.MouseButton1Click:Wait()
+			update.Visible = false
+		end
+	end)()
+
 	local toolBar = plugin:CreateToolbar("Cutscene Creator")
 	local button = toolBar:CreateButton("Steel's Cutscene Creator", "Open/Close Steel's Cutscene Creator", "rbxassetid://7643324915")
 	local gui = script:WaitForChild("CutscenePluginGui")
-	local main = gui.Main
-	local editBar = main.EditBar
 
 	local connections, startConnections, frameConnections, tweenStyleConnections = {}, {}, {}, {}
 
@@ -109,20 +112,32 @@ if not game:GetService("RunService"):IsRunning() then
 		end
 	end
 
-	plugin.Deactivation:Connect(function()
-		oldState = false
-		DoTween(main, TweenInfo.new(0.35, Enum.EasingStyle.Linear, Enum.EasingDirection.Out), {Position = guiPoses[false][1]})
+	local function CleanUpClose(unloading: boolean)
+		local function DisconnectAllTables()
+			DisconnectAll(tweenStyleConnections)
+			DisconnectAll(frameConnections)
+			DisconnectAll(connections)
+			DisconnectAll(startConnections)
+		end
 
-		DisconnectAll(tweenStyleConnections)
-		DisconnectAll(frameConnections)
-		DisconnectAll(connections)
-		DisconnectAll(startConnections)
+		oldState = false		
+		if unloading then
+			gui:Destroy()
+			DisconnectAllTables()
+		else
+			DisconnectAllTables()
+			DoTween(main, TweenInfo.new(0.35, Enum.EasingStyle.Linear, Enum.EasingDirection.Out), {Position = guiPoses[false][1]})
+			gui.Parent = nil
+			main.BrickPos.Position = UDim2.new(0.067, 0, -1.5, 0)
+			for _, barItem in ipairs(main.Bar:GetChildren()) do
+				barItem.Visible = if barItem.Name == "BackToMenu" then false else true
+			end
+			editBar.Visible = false
+		end
+	end
 
-		gui.Parent = nil
-		main.BrickPos.Position = UDim2.new(0.067, 0, -1.5, 0)
-		editBar.Visible = false
-		main.Bar.BackToMenu.Visible = false
-	end)
+	plugin.Deactivation:Connect(CleanUpClose)
+	plugin.Unloading:Connect(function() CleanUpClose(true) end)
 
 	local function GetFrames(cutscene: Model)
 		local frames, sorted = {}, {}
@@ -153,7 +168,9 @@ if not game:GetService("RunService"):IsRunning() then
 
 		editBar.TweenStyles.Visible = false
 		editBar.Visible = true
-		main.Bar.BackToMenu.Visible = true
+		for _, barItem in ipairs(main.Bar:GetChildren()) do
+			barItem.Visible = if (barItem.Name == "BackToMenu" or barItem.Name == "Close") then true else false
+		end
 		local length = model.FrameData
 		local singularity = model["1PlayerExclusive"]
 		local tweenStyle = model.TweenStyle
@@ -177,7 +194,7 @@ if not game:GetService("RunService"):IsRunning() then
 			length.Value = http:JSONEncode(decryptedLength)
 		end
 
-		local function TieToFrameBrick(frame: BasePart | nil)
+		local function TieToFrameBrick(frame: BasePart?)
 			editBar.RepositionFrameDone.Visible = false
 			DisconnectAll(frameConnections)
 
@@ -192,19 +209,20 @@ if not game:GetService("RunService"):IsRunning() then
 				editBar.FOV.Text = decryptedLength[frame.Name][2] or cam.FieldOfView
 				editBar.FrameLength.Text = decryptedLength[frame.Name][1] or 1
 				length.Value = http:JSONEncode(decryptedLength)
-
+				editBar.FrameRotation.Text = frame.Orientation.Z
 				editBar.FrameSelect.Text = frame.Name
 
 				selection:Set({frame})
-				editBar.FrameRotation.Text = frame.Orientation.Z
 
 				table.insert(frameConnections, editBar.RepositionFrame.MouseButton1Click:Connect(function()
 					editBar.RepositionFrameDone.Visible = true
-					frame.CFrame = cam.CFrame
 
 					local camMoveConec = cam:GetPropertyChangedSignal("CFrame"):Connect(function()
 						frame.CFrame = cam.CFrame
+						frame.Orientation = Vector3.new(frame.Orientation.X, frame.Orientation.Y, tonumber(editBar.FrameRotation.Text) or 0)
 					end)
+					frame.CFrame = cam.CFrame
+					frame.Orientation = Vector3.new(frame.Orientation.X, frame.Orientation.Y, tonumber(editBar.FrameRotation.Text) or 0)
 
 					local turnOffRepos = editBar.RepositionFrameDone.MouseButton1Click:Connect(function()
 						camMoveConec:Disconnect()
@@ -295,7 +313,9 @@ if not game:GetService("RunService"):IsRunning() then
 		frames = nil
 
 		table.insert(connections, main.Bar.BackToMenu.MouseButton1Click:Connect(function()
-			main.Bar.BackToMenu.Visible = false
+			for _, barItem in ipairs(main.Bar:GetChildren()) do
+				barItem.Visible = if barItem.Name == "BackToMenu" then false else true
+			end
 			DisconnectAll(tweenStyleConnections)
 			DisconnectAll(frameConnections)
 			DisconnectAll(connections)
@@ -339,8 +359,6 @@ if not game:GetService("RunService"):IsRunning() then
 				frame.BillboardGui.Enabled = false
 				frame.Transparency = 1
 			end
-			
-			selection:Set({})
 
 			if tweenStyle.Value ~= "Hard Cut" then
 				for _, frame in ipairs(frames) do
@@ -367,23 +385,10 @@ if not game:GetService("RunService"):IsRunning() then
 
 				local function FullFlash()
 					if skip then return end
-					local bool = Instance.new("BoolValue")
 
-					local function Flash(mode: string)
-						local tween = ts:Create(gui.CutscenePreview.Flash, TweenInfo.new(0.35, Enum.EasingStyle.Linear, mode == "In" and Enum.EasingDirection.In or Enum.EasingDirection.Out), {BackgroundTransparency = mode == "In" and 0 or 1})
-						tween:Play()
-
-						local connection; connection = tween.Completed:Connect(function(e)
-							connection:Disconnect()
-							bool.Value = not bool.Value
-						end)
-						table.insert(connections, connection)
-						return tween
-					end
-
-					tween = Flash("In")
-					bool.Changed:Wait()
-					tween = Flash("Out")
+					tween = ts:Create(gui.CutscenePreview.Flash, TweenInfo.new(0.35, Enum.EasingStyle.Linear, Enum.EasingDirection.In), {BackgroundTransparency = 0}); tween:Play()
+					tween.Completed:Wait()	
+					tween = ts:Create(gui.CutscenePreview.Flash, TweenInfo.new(0.35, Enum.EasingStyle.Linear, Enum.EasingDirection.Out), {BackgroundTransparency = 1}); tween:Play()
 				end
 
 				for _, frame in ipairs(frames) do
@@ -393,8 +398,6 @@ if not game:GetService("RunService"):IsRunning() then
 						cam.CFrame = frame.CFrame
 						cam.FieldOfView = decryptedLength[frame.Name][2] or originalFOV
 						SkippableWait(decryptedLength[frame.Name][1] or 1)
-
-						FullFlash()
 					else
 						break
 					end
@@ -441,6 +444,7 @@ if not game:GetService("RunService"):IsRunning() then
 			newFrame.CanCollide = false
 			newFrame.Anchored = true
 			newFrame.CFrame = cam.CFrame
+			newFrame.Orientation = Vector3.new(newFrame.Orientation.X, newFrame.Orientation.Y, tonumber(editBar.FrameRotation.Text) or 0)
 
 			local billboard = Instance.new("BillboardGui")
 			billboard.Size = UDim2.new(1, 0, 1, 0)
@@ -628,4 +632,4 @@ if not game:GetService("RunService"):IsRunning() then
 
 	print("Steel's Cutscene Creator has loaded!")
 end
---20:30, 16/10/21 (DD, MM, YY), @renato02042010
+--22:41 (In military time), 04/01/22 (DD, MM, YY), @renato02042010
