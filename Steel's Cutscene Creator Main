@@ -467,11 +467,7 @@ if not game:GetService("RunService"):IsRunning() then
 			billboard.Parent = newFrame
 
 			newFrame.Name = newFrameAmount
-			if newFrameAmount > 1 then
-				MakeRod(lastFrame, newFrame)
-			else
-				MakeRod(brick, newFrame)
-			end
+			MakeRod(if newFrameAmount > 1 then lastFrame else brick, newFrame)
 			RemakeLength(newFrame)
 			TieToFrameBrick(newFrame)
 			newFrame.Parent = model
@@ -587,7 +583,6 @@ if not game:GetService("RunService"):IsRunning() then
 			table.insert(startConnections, main.Bar.Edit.MouseButton1Click:Connect(function()
 				if main.BrickPos.Position ~= UDim2.new(0.067, 0, -1.5, 0) then return end
 				main.BrickPos.ChoosePos.Text = "Select the Cutscene you want to edit..."
-
 				main.BrickPos:TweenPosition(UDim2.new(0.067, 0, 0.366, 0), "In", "Sine", 0.5, true)
 
 				repeat task.wait() until #selection:Get() == 1 and selection:Get()[1]:IsA("Model") and selection:Get()[1]:FindFirstChild("FrameData")
@@ -630,6 +625,6 @@ if not game:GetService("RunService"):IsRunning() then
 	end
 	workspace.DescendantAdded:Connect(UpdateOldModels)
 
-	print("Steel's Cutscene Creator has loaded!")
+	print("Steel's Cutscene Creator has been loaded!")
 end
---22:41 (In military time), 04/01/22 (DD, MM, YY), @renato02042010
+-- 01:15 (In military time), 07/01/22 (DD, MM, YY), @renato02042010
